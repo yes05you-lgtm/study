@@ -31,6 +31,9 @@
           <span class="badge-title">AI 모델</span>
           <span class="badge-sub">확인 중...</span>
         </div>
+        <button id="btnLockApp" class="btn btn-outline btn-sm btn-lock" title="화면 잠금 및 로그아웃">
+          🔒 잠금
+        </button>
       </div>
     </header>
 
@@ -184,6 +187,32 @@
     <footer class="app-footer">
       <p>Study Note AI &bull; Powered by Google Gemini &amp; Python &bull; Cornell Note-taking System</p>
     </footer>
+  </div>
+
+  <!-- PIN Auth Modal Overlay -->
+  <div id="pinModal" class="pin-modal-overlay">
+    <div class="pin-modal-card">
+      <div class="pin-icon-wrap">
+        <span class="pin-icon">🔒</span>
+      </div>
+      <h2>Study Note AI 입장</h2>
+      <p class="pin-modal-desc">서비스를 이용하시려면 <strong>4자리 입장 비밀번호</strong>를 입력하세요.</p>
+      
+      <form id="pinForm" onsubmit="event.preventDefault();">
+        <div class="pin-inputs" id="pinInputsContainer">
+          <input type="password" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="pin-box" data-index="0" autofocus autocomplete="off" />
+          <input type="password" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="pin-box" data-index="1" autocomplete="off" />
+          <input type="password" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="pin-box" data-index="2" autocomplete="off" />
+          <input type="password" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="pin-box" data-index="3" autocomplete="off" />
+        </div>
+        <div id="pinErrorMsg" class="pin-error-text hidden">비밀번호가 올바르지 않습니다.</div>
+        
+        <button type="submit" id="btnSubmitPin" class="btn btn-primary btn-pin-submit">
+          입장하기
+        </button>
+      </form>
+      <div class="pin-hint">개인 전용 AI 스터디 노트 서비스입니다.</div>
+    </div>
   </div>
 
   <!-- Custom JavaScript -->

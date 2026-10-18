@@ -1,19 +1,241 @@
 let selectedFile = null;
+const PIN_STORAGE_KEY = "study_access_pin";
 
 document.addEventListener("DOMContentLoaded", () => {
   console.log("[PAGE] Study Note AI 로드 완료");
-  initHealthCheck();
+  initPinAuth();
   initUploadListeners();
   initActionListeners();
 });
 
+// ==========================================================================
+// 0. PIN 인증 및 보안 관리
+// ==========================================================================
+function getStoredPin() {
+  return localStorage.getItem(PIN_STORAGE_KEY) || "";
+}
+
+function setStoredPin(pin) {
+  localStorage.setItem(PIN_STORAGE_KEY, pin);
+}
+
+function clearStoredPin() {
+  localStorage.removeItem(PIN_STORAGE_KEY);
+}
+
+// 공통 인증 헤더 첨부 fetch 래퍼
+async function authFetch(url, options = {}) {
+  const pin = getStoredPin();
+  options.headers = options.headers || {};
+
+  if (options.headers instanceof Headers) {
+    if (pin) options.headers.set("X-Access-Pin", pin);
+  } else {
+    if (pin) options.headers["X-Access-Pin"] = pin;
+  }
+
+  const res = await fetch(url, options);
+
+  // 401 Unauthorized 발생 시 즉시 잠금 모달 표시
+  if (res.status === 401 && !url.includes("/api/verify_pin")) {
+    clearStoredPin();
+    showPinModal(true, "인증이 만료되었거나 비밀번호가 올바르지 않습니다.");
+  }
+  return res;
+}
+
+// PIN 모달 열기
+function showPinModal(showError = false, errorMsg = "") {
+  const modal = document.getElementById("pinModal");
+  const errBox = document.getElementById("pinErrorMsg");
+  const inputs = document.querySelectorAll(".pin-box");
+
+  modal.classList.remove("hidden");
+  inputs.forEach(input => {
+    input.value = "";
+    input.classList.remove("error");
+  });
+
+  if (showError && errorMsg) {
+    errBox.textContent = errorMsg;
+    errBox.classList.remove("hidden");
+  } else {
+    errBox.classList.add("hidden");
+  }
+
+  // 첫 번째 칸 자동 포커스
+  setTimeout(() => {
+    if (inputs[0]) inputs[0].focus();
+  }, 100);
+}
+
+// PIN 모달 닫기
+function hidePinModal() {
+  const modal = document.getElementById("pinModal");
+  modal.classList.add("hidden");
+}
+
+// PIN 인증 초기화 및 이벤트 리스너 등록
+function initPinAuth() {
+  const modal = document.getElementById("pinModal");
+  const form = document.getElementById("pinForm");
+  const inputs = Array.from(document.querySelectorAll(".pin-box"));
+  const btnSubmit = document.getElementById("btnSubmitPin");
+  const btnLock = document.getElementById("btnLockApp");
+  const errBox = document.getElementById("pinErrorMsg");
+  const card = modal.querySelector(".pin-modal-card");
+
+  // 헤더의 잠금(로그아웃) 버튼
+  if (btnLock) {
+    btnLock.addEventListener("click", () => {
+      clearStoredPin();
+      showPinModal(false);
+    });
+  }
+
+  // 4자리 입력 박스 이벤트 핸들링
+  inputs.forEach((input, index) => {
+    // 1) 숫자 입력 시 다음 칸 자동 이동
+    input.addEventListener("input", (e) => {
+      const val = e.target.value.replace(/[^0-9]/g, "");
+      e.target.value = val ? val[0] : "";
+
+      if (e.target.value) {
+        if (index < inputs.length - 1) {
+          inputs[index + 1].focus();
+        } else {
+          // 4번째 칸까지 입력되었으면 자동 제출
+          submitPin();
+        }
+      }
+    });
+
+    // 2) 백스페이스 및 화살표 키 처리
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Backspace") {
+        if (!e.target.value && index > 0) {
+          inputs[index - 1].focus();
+          inputs[index - 1].value = "";
+        }
+      } else if (e.key === "ArrowLeft" && index > 0) {
+        inputs[index - 1].focus();
+      } else if (e.key === "ArrowRight" && index < inputs.length - 1) {
+        inputs[index + 1].focus();
+      }
+    });
+
+    // 3) 붙여넣기(Paste) 지원 (예: 4자리 복사 후 붙여넣을 때)
+    input.addEventListener("paste", (e) => {
+      e.preventDefault();
+      const pasteData = (e.clipboardData || window.clipboardData).getData("text").trim();
+      const digits = pasteData.replace(/[^0-9]/g, "").slice(0, 4);
+
+      if (digits.length > 0) {
+        digits.split("").forEach((d, i) => {
+          if (inputs[i]) inputs[i].value = d;
+        });
+
+        if (digits.length >= 4) {
+          inputs[3].focus();
+          submitPin();
+        } else {
+          const nextIndex = Math.min(digits.length, inputs.length - 1);
+          inputs[nextIndex].focus();
+        }
+      }
+    });
+  });
+
+  // 제출 버튼 클릭
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    submitPin();
+  });
+
+  async function submitPin() {
+    const pin = inputs.map(input => input.value).join("");
+    if (pin.length !== 4) {
+      errBox.textContent = "4자리 비밀번호를 모두 입력해주세요.";
+      errBox.classList.remove("hidden");
+      inputs.forEach(inp => inp.classList.add("error"));
+      return;
+    }
+
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = "확인 중...";
+
+    try {
+      const res = await fetch("/api/verify_pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.status === "success") {
+        setStoredPin(pin);
+        hidePinModal();
+        initHealthCheck();
+      } else {
+        // 실패: 흔들림 애니메이션 및 에러 표시
+        card.classList.remove("shake");
+        void card.offsetWidth; // 트리거 리플로우
+        card.classList.add("shake");
+
+        errBox.textContent = "비밀번호가 올바르지 않습니다.";
+        errBox.classList.remove("hidden");
+        inputs.forEach(inp => {
+          inp.value = "";
+          inp.classList.add("error");
+        });
+        inputs[0].focus();
+      }
+    } catch (err) {
+      console.error("[PIN ERR]", err);
+      errBox.textContent = "서버 통신에 실패했습니다. 다시 시도해주세요.";
+      errBox.classList.remove("hidden");
+    } finally {
+      btnSubmit.disabled = false;
+      btnSubmit.textContent = "입장하기";
+    }
+  }
+
+  // 초기 자동 로그인 체크
+  const storedPin = getStoredPin();
+  if (storedPin && storedPin.length === 4) {
+    fetch("/api/verify_pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin: storedPin })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          hidePinModal();
+          initHealthCheck();
+        } else {
+          clearStoredPin();
+          showPinModal(false);
+        }
+      })
+      .catch(() => {
+        showPinModal(false);
+      });
+  } else {
+    showPinModal(false);
+  }
+}
+
+// ==========================================================================
 // 1. 서버 상태 및 API Key 상하 2줄 배지 업데이트
+// ==========================================================================
 async function initHealthCheck() {
   const serverBadge = document.getElementById("serverBadge");
   const apiKeyBadge = document.getElementById("apiKeyBadge");
 
   try {
-    const res = await fetch("/health");
+    const res = await authFetch("/health");
     const data = await res.json();
 
     if (data.status === "ok") {
@@ -48,7 +270,9 @@ async function initHealthCheck() {
   }
 }
 
+// ==========================================================================
 // 2. 파일 업로드 리스너
+// ==========================================================================
 function initUploadListeners() {
   const dropZone = document.getElementById("dropZone");
   const fileInput = document.getElementById("pdfFileInput");
@@ -94,7 +318,9 @@ function initUploadListeners() {
   }
 }
 
+// ==========================================================================
 // 3. 버튼 이벤트 리스너 등록
+// ==========================================================================
 function initActionListeners() {
   const btnStartGenerate = document.getElementById("btnStartGenerate");
   const btnGenerateQuiz = document.getElementById("btnGenerateQuiz");
@@ -126,7 +352,9 @@ function initActionListeners() {
   });
 }
 
+// ==========================================================================
 // 4. 업로드 및 코넬식 노트 즉시 생성 파이프라인
+// ==========================================================================
 async function startFullCornellProcess() {
   if (!selectedFile) return;
 
@@ -140,7 +368,7 @@ async function startFullCornellProcess() {
 
   try {
     console.log("[PIPELINE] 1단계: PDF 업로드 및 텍스트 추출...");
-    const inspectRes = await fetch("/inspect", {
+    const inspectRes = await authFetch("/inspect", {
       method: "POST",
       body: formData
     });
@@ -151,7 +379,7 @@ async function startFullCornellProcess() {
     }
 
     console.log("[PIPELINE] 2단계: 코넬식 노트 자동 생성 요청...");
-    const noteRes = await fetch("/cornell_notes", {
+    const noteRes = await authFetch("/cornell_notes", {
       method: "POST",
       headers: { "Content-Type": "application/json" }
     });
@@ -184,7 +412,9 @@ async function startFullCornellProcess() {
   }
 }
 
+// ==========================================================================
 // 5. 코넬 노트 화면 렌더링
+// ==========================================================================
 function renderCornellSheet(data) {
   document.getElementById("cornellHeaderTitle").textContent = data.title || "강의 핵심 요약 노트";
   document.getElementById("cornellDate").textContent = `정리 일시: ${new Date().toLocaleDateString()}`;
@@ -238,7 +468,9 @@ function renderCornellSheet(data) {
   });
 }
 
+// ==========================================================================
 // 6. 대화형 채팅 말풍선 Q&A 전송 및 응답 처리
+// ==========================================================================
 async function sendChatMessage() {
   const chatInput = document.getElementById("chatInput");
   const btnSend = document.getElementById("btnSendChat");
@@ -273,7 +505,7 @@ async function sendChatMessage() {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 
   try {
-    const res = await fetch("/chat", {
+    const res = await authFetch("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message })
@@ -297,7 +529,9 @@ async function sendChatMessage() {
   }
 }
 
+// ==========================================================================
 // 7. 퀴즈 생성 요청 (/quiz)
+// ==========================================================================
 async function generateQuiz() {
   const btn = document.getElementById("btnGenerateQuiz");
   btn.disabled = true;
@@ -306,7 +540,7 @@ async function generateQuiz() {
 
   try {
     console.log("[QUIZ] 예상 문제 출제 요청...");
-    const res = await fetch("/quiz", {
+    const res = await authFetch("/quiz", {
       method: "POST",
       headers: { "Content-Type": "application/json" }
     });
@@ -332,7 +566,9 @@ async function generateQuiz() {
   }
 }
 
+// ==========================================================================
 // 8. 퀴즈 렌더링
+// ==========================================================================
 function renderQuiz(quizzes) {
   const container = document.getElementById("quizContainer");
   container.innerHTML = "";

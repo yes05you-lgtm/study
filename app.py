@@ -26,6 +26,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 FLASK_DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", 20))
+ACCESS_PIN = os.getenv("ACCESS_PIN", "0909")
 
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
@@ -115,6 +116,33 @@ def extract_numbers_summary(text):
 def index():
     logger.info("[REQUEST] GET /")
     return render_template("index.html")
+
+
+@app.route("/api/verify_pin", methods=["POST"])
+def verify_pin():
+    """클라이언트가 입력한 PIN 코드가 일치하는지 검증"""
+    req_json = request.get_json(silent=True) or {}
+    client_pin = str(req_json.get("pin", "")).strip()
+    logger.info("[REQUEST] POST /api/verify_pin")
+    if client_pin == ACCESS_PIN:
+        return jsonify({"status": "success", "message": "인증에 성공했습니다."}), 200
+    return jsonify({"status": "error", "error": "비밀번호가 올바르지 않습니다."}), 401
+
+
+PROTECTED_ENDPOINTS = {"/inspect", "/cornell_notes", "/quiz", "/chat"}
+
+
+@app.before_request
+def check_pin_auth():
+    """핵심 API에 대해 4자리 입장 비밀번호 헤더(X-Access-Pin) 검증"""
+    if request.path in PROTECTED_ENDPOINTS:
+        client_pin = request.headers.get("X-Access-Pin", "").strip()
+        if client_pin != ACCESS_PIN:
+            logger.warning(f"[AUTH] 비인가 요청 차단: path={request.path}")
+            return jsonify({
+                "status": "unauthorized",
+                "error": "접근 권한이 없습니다. 4자리 입장 비밀번호를 입력해주세요."
+            }), 401
 
 
 @app.route("/health", methods=["GET"])
