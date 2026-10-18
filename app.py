@@ -451,6 +451,7 @@ def chat_with_lecture():
 
 
 if __name__ == "__main__":
-    logger.info(f"Starting Study Note Server... Debug={FLASK_DEBUG}, Model={GEMINI_MODEL}")
-    app.run(host="0.0.0.0", port=5000, debug=FLASK_DEBUG)
+    port = int(os.environ.get("PORT", 5000))
+    logger.info(f"Starting Study Note Server on port {port}... Debug={FLASK_DEBUG}, Model={GEMINI_MODEL}")
+    app.run(host="0.0.0.0", port=port, debug=FLASK_DEBUG)
 
