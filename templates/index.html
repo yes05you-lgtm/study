@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Study Note AI - 강의 자료 정리 & 코넬식 노트</title>
+  <!-- Google Fonts: Pretendard -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Marked.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="brand-tag">🎓 SMART LECTURE ASSISTANT</div>
+        <h1>Study Note AI</h1>
+        <p class="subtitle">강의 자료(PDF)를 업로드하면 <strong>코넬식 노트 필기</strong>를 즉시 생성하고, AI 전담 튜터 질의응답 및 예상 문제를 제공합니다.</p>
+      </div>
+      <div class="header-right">
+        <div id="serverBadge" class="status-badge checking">
+          <span class="badge-title">서버 상태</span>
+          <span class="badge-sub">확인 중...</span>
+        </div>
+        <div id="apiKeyBadge" class="status-badge checking">
+          <span class="badge-title">AI 모델</span>
+          <span class="badge-sub">확인 중...</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Error Banner -->
+    <div id="errorBanner" class="error-banner hidden" role="alert">
+      <span class="error-icon">⚠️</span>
+      <span id="errorMessage" class="error-text"></span>
+      <button id="closeErrorBtn" class="close-btn" aria-label="닫기">&times;</button>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Step 1: PDF Upload & Direct Generation -->
+      <section class="card-section" id="sectionUpload">
+        <div class="section-header">
+          <span class="step-badge">Step 1</span>
+          <h2>강의 자료(PDF) 업로드</h2>
+        </div>
+        <p class="section-desc">수업 슬라이드, 교재, 강의안 PDF 파일을 업로드하면 <strong>곧바로 코넬식 노트</strong>로 자동 요약 정리됩니다.</p>
+        
+        <div class="upload-area" id="dropZone">
+          <input type="file" id="pdfFileInput" accept=".pdf" class="file-input">
+          <div class="upload-icon">📄</div>
+          <div class="upload-text">
+            <strong>클릭하여 강의 PDF 선택</strong> 또는 파일을 여기로 드래그 앤 드롭
+          </div>
+          <div id="selectedFileInfo" class="file-info hidden"></div>
+        </div>
+
+        <div class="upload-actions">
+          <button id="btnStartGenerate" class="btn btn-primary btn-large" disabled>
+            ✨ 코넬식 노트 바로 생성하기
+          </button>
+          <span class="memory-notice">🔒 업로드된 자료는 서버 디스크에 저장되지 않고 메모리에만 안전하게 보관됩니다.</span>
+        </div>
+      </section>
+
+      <!-- Step 2: Cornell Note Section -->
+      <section class="card-section hidden" id="sectionCornell">
+        <div class="section-header">
+          <div class="badge-title">
+            <span class="step-badge">Step 2</span>
+            <h2 id="lectureTopicTitle">코넬식 노트 필기 (Cornell Notes)</h2>
+          </div>
+          <button id="btnPrintNote" class="btn btn-outline btn-sm">🖨️ 노트 인쇄 / PDF 저장</button>
+        </div>
+
+        <p class="section-desc">좌측의 <strong>단서(Cue) 질문</strong>을 보고 우측 <strong>상세 필기(Notes)</strong>를 가린 채 복습에 활용하세요.</p>
+
+        <!-- Cornell Layout Grid -->
+        <div class="cornell-sheet" id="cornellSheet">
+          <!-- Cornell Header -->
+          <div class="cornell-header">
+            <div class="cornell-header-title" id="cornellHeaderTitle">강의 핵심 요약 노트</div>
+            <div class="cornell-header-date" id="cornellDate"></div>
+          </div>
+
+          <!-- Main 2-Column Split: Cue Column vs Notes Column -->
+          <div class="cornell-body">
+            <!-- Left: Cue / Questions / Keywords (30%) -->
+            <div class="cornell-cue-col">
+              <div class="col-header">
+                <h3>📌 단서 & 핵심 질문 (Cue Questions)</h3>
+                <span class="col-hint">질문을 보고 우측을 가린 채 답해보세요</span>
+              </div>
+              <div id="cueList" class="cue-list"></div>
+            </div>
+
+            <!-- Right: Detailed Notes (70%) -->
+            <div class="cornell-notes-col">
+              <div class="col-header">
+                <h3>📝 상세 필기 (Lecture Notes)</h3>
+                <span class="col-hint">개념 정의, 원리 및 핵심 내용</span>
+              </div>
+              <div id="notesList" class="notes-list"></div>
+            </div>
+          </div>
+
+          <!-- Bottom: Summary Column (100% width) -->
+          <div class="cornell-summary-col">
+            <div class="summary-header">
+              <h3>💡 핵심 요약 (Summary)</h3>
+            </div>
+            <div id="summaryText" class="summary-content"></div>
+            
+            <div class="takeaways-box">
+              <h4>🎯 시험 전 꼭 기억할 핵심 교훈 3가지:</h4>
+              <ul id="takeawaysList"></ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Key Vocabulary Glossary -->
+        <div class="vocab-section">
+          <h3>📖 필수 암기 용어 사전</h3>
+          <div id="vocabGrid" class="vocab-grid"></div>
+        </div>
+      </section>
+
+      <!-- Step 3: Interactive Chat Q&A Section (말풍선 채팅창) -->
+      <section class="card-section hidden" id="sectionChat">
+        <div class="section-header">
+          <div class="badge-title">
+            <span class="step-badge">Step 3</span>
+            <h2>💬 강의 내용 질의응답 (AI 튜터 Q&A)</h2>
+          </div>
+        </div>
+        <p class="section-desc">위 코넬식 노트나 강의 자료에서 이해가 잘 안 되거나 더 궁금한 내용을 채팅하듯이 자유롭게 질문해보세요.</p>
+
+        <!-- Dedicated Chat Window Area with Fixed Height and Scroll -->
+        <div class="chat-wrapper">
+          <div class="chat-messages" id="chatMessages">
+            <div class="chat-bubble ai">
+              <div class="bubble-sender">🤖 AI 학습 튜터</div>
+              <div class="bubble-content">
+                안녕하세요! 방금 정리된 강의 자료에 대해 궁금한 점이나 헷갈리는 개념이 있다면 무엇이든 질문해주세요. 친절히 설명해 드릴게요!
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat Input Bar -->
+          <div class="chat-input-bar">
+            <input type="text" id="chatInput" placeholder="강의 내용 중 궁금한 점을 입력하세요 (예: 이 개념이 왜 중요한가요?)" autocomplete="off">
+            <button id="btnSendChat" class="btn btn-primary">전송</button>
+          </div>
+        </div>
+
+        <!-- Action Button for Quiz Generation -->
+        <div class="quiz-trigger-box">
+          <div class="quiz-trigger-desc">
+            💡 질문과 복습이 끝났다면, 내가 얼마나 이해했는지 자가진단 문제를 풀어보세요!
+          </div>
+          <button id="btnGenerateQuiz" class="btn btn-secondary btn-large">
+            🎯 복습용 시험 예상 문제 출제하기
+          </button>
+        </div>
+      </section>
+
+      <!-- Step 4: Quiz & Self Test Section -->
+      <section class="card-section hidden" id="sectionQuiz">
+        <div class="section-header">
+          <span class="step-badge">Step 4</span>
+          <h2>🎯 강의 복습 자가 진단 퀴즈</h2>
+        </div>
+        <p class="section-desc">강의 핵심 내용을 바탕으로 출제된 예상 문제입니다. 보기를 클릭하여 정답과 해설을 확인하세요.</p>
+        <div id="quizContainer" class="quiz-container"></div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>Study Note AI &bull; Powered by Google Gemini &amp; Python &bull; Cornell Note-taking System</p>
+    </footer>
+  </div>
+
+  <!-- Custom JavaScript -->
+  <script src="/static/app.js"></script>
+</body>
+</html>
