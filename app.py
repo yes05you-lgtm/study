@@ -22,11 +22,30 @@ logger = logging.getLogger("lecture-note-builder")
 
 app = Flask(__name__)
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+def get_clean_env(key, default=""):
+    val = os.getenv(key, default)
+    if val is None:
+        return default
+    cleaned = str(val).strip().strip('"').strip("'").strip()
+    return cleaned if cleaned else default
+
+DEPRECATED_MODELS = {
+    "gemini-2.5-flash", "models/gemini-2.5-flash",
+    "gemini-2.0-flash", "models/gemini-2.0-flash",
+    "gemini-1.5-flash", "models/gemini-1.5-flash"
+}
+
+def get_model_name():
+    name = get_clean_env("GEMINI_MODEL", "gemini-3.8-flash")
+    if not name or name in DEPRECATED_MODELS:
+        return "gemini-3.8-flash"
+    return name
+
+GEMINI_API_KEY = get_clean_env("GEMINI_API_KEY")
+GEMINI_MODEL = get_model_name()
 FLASK_DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", 20))
-ACCESS_PIN = os.getenv("ACCESS_PIN", "0909")
+ACCESS_PIN = get_clean_env("ACCESS_PIN", "0909")
 
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
@@ -238,11 +257,11 @@ def generate_cornell_notes():
     if not current_lecture or "extracted" not in current_lecture:
         return jsonify({"error": "먼저 강의 자료(PDF)를 업로드해주세요."}), 400
 
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key or not api_key.strip() or api_key == "your_gemini_api_key_here":
+    api_key = get_clean_env("GEMINI_API_KEY")
+    if not api_key or api_key == "your_gemini_api_key_here":
         return jsonify({"error": "Gemini API Key가 설정되지 않았습니다."}), 400
 
-    model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model_name = get_model_name()
     extracted = current_lecture["extracted"]
     num_summary = current_lecture.get("num_summary", {})
 
@@ -348,11 +367,11 @@ def generate_quiz():
     if not current_lecture or "extracted" not in current_lecture:
         return jsonify({"error": "먼저 강의 자료를 업로드해주세요."}), 400
 
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = get_clean_env("GEMINI_API_KEY")
     if not api_key:
         return jsonify({"error": "Gemini API Key가 필요합니다."}), 400
 
-    model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model_name = get_model_name()
     extracted = current_lecture["extracted"]
 
     prompt = f"""
@@ -421,11 +440,11 @@ def chat_with_lecture():
     if not current_lecture or "extracted" not in current_lecture:
         return jsonify({"error": "먼저 강의 자료를 업로드해주세요."}), 400
 
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = get_clean_env("GEMINI_API_KEY")
     if not api_key:
         return jsonify({"error": "Gemini API Key가 필요합니다."}), 400
 
-    model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model_name = get_model_name()
     req_json = request.get_json(silent=True) or {}
     user_message = req_json.get("message", "").strip()
 
